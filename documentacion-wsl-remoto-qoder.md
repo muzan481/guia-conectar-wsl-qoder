@@ -268,8 +268,8 @@ processors=4
 
 - [ ] `wsl -l -v` muestra Ubuntu en versión 2.
 - [ ] `curl` y `wget` instalados en la distro.
-- [ ] Qoder IDE 1.30.1+ instalado y abierto.
-- [ ] Extensión Open Remote - WSL instalada.
+- [ ] Qoder IDE instalado y abierto (validado con 1.38.0).
+- [ ] Soporte WSL disponible: Qoder IDE 1.38.0 ya incluye la extensión WSL (no hace falta instalar jeanp413).
 - [ ] Conexión realizada con `WSL: Connect to WSL using Distro...`.
 - [ ] Indicador `WSL: Ubuntu` visible.
 - [ ] Proyecto abierto en `/home/alvaro/...`.
@@ -293,9 +293,9 @@ processors=4
 | Verificar extensión WSL | Open VSX y `package.json` del repo | Open Remote - WSL 0.0.5; comandos y requisitos |
 | Contrastar versiones y soporte | Notas de versión de Qoder | WSL desde 0.1.17; estabilidad en 1.30.1; última 1.37.0 |
 
-Limitaciones de la auditoría:
+Limitaciones de la auditoría inicial (actualizadas el 31/10/2026):
 
-- No se pudo abrir Qoder IDE para validar la interfaz, porque no está instalado.
+- En la primera pasada Qoder IDE no estaba instalado; se instaló después (1.38.0) y se validó la conexión real (ver sección 12).
 - Los nombres exactos de menús pueden variar ligeramente entre versiones del IDE.
 - No se modificó ninguna configuración del sistema ni de WSL; todas las comprobaciones fueron de solo lectura.
 
@@ -338,9 +338,8 @@ Si hay proxy corporativo, configurarlo también dentro de WSL. Verificar espacio
 
 ### 9.3 La extensión no aparece o no conecta
 
-- Confirmar que es **Open Remote - WSL** (jeanp413), no la de Microsoft.
-- Instalar el VSIX manualmente si el marketplace del fork no la muestra.
-- Añadir `enable-proposed-api` en `argv.json` y reiniciar.
+- Confirmar que es **Open Remote - WSL** (jeanp413), no la de Microsoft. En Qoder IDE 1.38.0 la extensión WSL ya viene integrada (`aicoding.open-remote-wsl`): no instalar jeanp413 encima, porque ambas registran la vista `wslTargets` y el IDE falla con «No se pueden registrar varias vistas con el mismo identificador "wslTargets"».
+- Si hace falta instalar a mano una extensión WSL en versiones antiguas, usar el VSIX; en 1.38.0 no es necesario.
 - Revisar **WSL: Show Log** y `~/.qoder-server/*.log`.
 
 ### 9.4 Lentitud o errores de archivos
@@ -413,3 +412,71 @@ C:\Users\tutua\AppData\Local\Programs\Qoder IDE\   Instalación del IDE
 \\wsl$\Ubuntu\home\alvaro                Acceso al sistema de archivos Linux
 /home/alvaro/.qoder-server               Servidor remoto y extensiones Linux
 ```
+
+---
+
+## 12. Resolución final verificada (31/10/2026)
+
+Objetivo cumplido: abrir un workspace WSL real con árbol de archivos y código visible.
+
+### 12.1 Qué se instaló
+
+- Qoder IDE 1.38.0 (compilación `1716667cb46594e4c08fc5c502906988efacfc86`), instalado con winget.
+- El IDE ya trae el soporte WSL integrado (`aicoding.open-remote-wsl`, vista **WSL Targets**). No se requiere ninguna extensión adicional.
+
+### 12.2 Comando que abre el proyecto WSL
+
+Desde PowerShell:
+
+```powershell
+& "C:\Users\tutua\AppData\Local\Programs\Qoder IDE\bin\code.cmd" `
+  --disable-workspace-trust `
+  --folder-uri "vscode-remote://wsl+ubuntu/home/alvaro/manual-de-como-funciona-lisp"
+```
+
+Notas:
+
+- Se usa `bin\code.cmd` (CLI del IDE), no `bin\qoder.cmd` (que corresponde al agente/CLI aparte).
+- `--folder-uri` evita que Git Bash convierta la ruta Linux y genere URIs corruptas del tipo `vscode-remote://wsl+ubuntu/c:/...`.
+- `--disable-workspace-trust` evita el aviso de confianza en cada arranque; si se prefiere el aviso, basta pulsar **Trust**.
+
+### 12.3 Cómo comprobar que quedó bien
+
+```powershell
+& "C:\Users\tutua\AppData\Local\Programs\Qoder IDE\bin\code.cmd" --status
+```
+
+Resultado obtenido:
+
+- Ventana: `mi_macro_recursiva.lisp - manual-de-como-funciona-lisp [WSL: ubuntu] - Qoder IDE`
+- Remoto: `WSL: ubuntu` con `remote-server`, `fileWatcher` y `extension-host` activos.
+- Carpeta indexada: `Folder (manual-de-como-funciona-lisp): 164 files` — `lisp(97)`, `md(5)`, `fasl(1)`, `agents.md(1)`.
+
+El estado se guarda en:
+
+```text
+C:\Users\tutua\AppData\Roaming\Qoder\User\workspaceStorage\3fbb8e2d5355582fefe97f20c4b844b4\workspace.json
+{"folder": "vscode-remote://wsl%2Bubuntu/home/alvaro/manual-de-como-funciona-lisp"}
+```
+
+### 12.4 Errores encontrados y su estado
+
+| Síntoma | Causa | Estado |
+|---|---|---|
+| «No se pueden registrar varias vistas con el mismo identificador "wslTargets"» | Extensión jeanp413 instalada encima de la integrada | Resuelto: extensión desinstalada |
+| Se abría una ruta `wsl+ubuntu/c:/...` inválida | Git Bash convirtió `/home/alvaro/...` a ruta Windows | Resuelto: lanzar con PowerShell y `--folder-uri` |
+| Aviso «Workspace trust is required» | Confianza de workspace desactivada por defecto en el CLI | Resuelto con `--disable-workspace-trust` |
+| `cannot get workspace folder` (una vez al arrancar) | Carrera de inicio de `aicoding-agent` antes de que el folder esté listo | No bloqueante: no se repite y el agente enruta correctamente |
+| `No bundle location found for extension aicoding.open-remote-wsl` | Aviso interno del host local sobre el bundle del agente | No bloqueante: la vista WSL y la conexión funcionan |
+
+Si en el futuro la ventana remota dejara de cargar el árbol de archivos de forma repetida, reiniciar el servidor remoto:
+
+```powershell
+wsl -d Ubuntu -e rm -rf ~/.qoder-server
+```
+
+y volver a lanzar el comando de la sección 12.2 (se reinstalan las extensiones remotas).
+
+### 12.5 Diferencia con Qoder Desktop 0.5.1
+
+Qoder Desktop (la app de escritorio, `productId: qoder`) no es un IDE con árbol de archivos: trabaja por tareas de agente. Su workspace WSL «alvaro» existía, pero la tarea se ejecutó en `/mnt/c/WINDOWS/System32`, por eso solo se veía el nombre del workspace y no el código. Para navegar y editar archivos dentro de WSL, usar **Qoder IDE** con el comando de la sección 12.2.
